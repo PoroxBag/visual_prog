@@ -80,3 +80,23 @@ function getStatusColor(status: Status): string {
 console.log(getStatusColor('active'));
 console.log(getStatusColor('inactive'));
 console.log(getStatusColor('new'));
+
+type StringFormatter = (input: string, uppercase?: boolean) => string;
+
+const capitalizeFirst: StringFormatter = (input, uppercase = false) => {
+    if (input.length === 0) return input;
+    const first = input[0]!.toUpperCase();
+    const rest = input.slice(1);
+    const result = first + rest;
+    return uppercase ? result.toUpperCase() : result;
+};
+
+const trimAndUppercase: StringFormatter = (input, uppercase = false) => {
+    const trimmed = input.trim();
+    return uppercase ? trimmed.toUpperCase() : trimmed;
+};
+
+console.log(capitalizeFirst('hello'));
+console.log(capitalizeFirst('hello', true));
+console.log(trimAndUppercase('  test  '));
+console.log(trimAndUppercase('  test  ', true));
