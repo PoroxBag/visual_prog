@@ -47,3 +47,17 @@ const book2: Book = {
     genre: 'non-fiction'
 };
 console.log(createBook(book2));
+
+function calculateArea(shape: 'circle', radius: number): number;
+function calculateArea(shape: 'square', side: number): number;
+
+function calculateArea(shape: 'circle' | 'square', param: number): number {
+    if (shape === 'circle') {
+        return Math.PI * param * param;
+    } else {
+        return param * param;
+    }
+}
+
+console.log(calculateArea('circle', 7));
+console.log(calculateArea('square', 3));
