@@ -100,3 +100,16 @@ console.log(capitalizeFirst('hello'));
 console.log(capitalizeFirst('hello', true));
 console.log(trimAndUppercase('  test  '));
 console.log(trimAndUppercase('  test  ', true));
+
+function getFirstElement<T>(arr: T[]): T | undefined {
+    return arr[0];
+}
+
+const numbers = [1, 2, 3];
+console.log(getFirstElement(numbers));
+
+const strings = ['l', 'b', 's'];
+console.log(getFirstElement(strings));
+
+const empty: number[] = [];
+console.log(getFirstElement(empty));
