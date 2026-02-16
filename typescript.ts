@@ -113,3 +113,24 @@ console.log(getFirstElement(strings));
 
 const empty: number[] = [];
 console.log(getFirstElement(empty));
+
+interface HasId {
+    id: number;
+}
+
+function findById<T extends HasId>(items: T[], id: number): T | undefined {
+    return items.find(item => item.id === id);
+}
+
+interface User extends HasId {
+    name: string;
+}
+
+const users: User[] = [
+    { id: 1, name: 'AliceInWonderland', isActive: true },
+    { id: 2, name: 'SnailBob', isActive: false }
+];
+
+console.log(findById(users, 1));
+console.log(findById(users, 2));
+console.log(findById(users, 3));
