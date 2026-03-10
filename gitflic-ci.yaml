@@ -6,17 +6,17 @@ stages:
   - test
 
 jobs:
-  - name: install
+  install:
     stage: install
     scripts:
       - npm install
 
-  - name: build
+  build:
     stage: build
     scripts:
       - npx tsc --noEmit
 
-  - name: test
+  test:
     stage: test
     scripts:
       - npm run test:run
