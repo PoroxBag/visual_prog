@@ -1,7 +1,19 @@
 image: node:20
 
 stages:
+  - install
+  - build
   - test
+
+install:
+  stage: install
+  script:
+    - npm install
+
+build:
+  stage: build
+  script:
+    - npx tsc --noEmit
 
 test:
   stage: test
