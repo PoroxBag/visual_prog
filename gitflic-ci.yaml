@@ -9,14 +9,14 @@ jobs:
   install:
     stage: install
     scripts:
-      - npm install
+      - step: npm install
 
   build:
     stage: build
     scripts:
-      - npx tsc --noEmit
+      - step: npx tsc --noEmit
 
   test:
     stage: test
     scripts:
-      - npm run test:run
+      - step: npm run test:run
