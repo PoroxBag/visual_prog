@@ -1,48 +1,22 @@
-image: ubuntu:latest
-
-variables:
-  TEST_1_SUCCESS: "true"
-  TEST_2_SUCCESS: "true"
-
-before_script:
-  - echo "Скрипт до основных инструкций"
+image: node:20
 
 stages:
-  - test
+  - install
   - build
-  - deploy
+  - test
 
 jobs:
-  build:
+  run-install:
+    stage: install
+    script:
+      - npm install
+
+  run-build:
     stage: build
-    scripts:
-      - echo "Сборка проекта"
-      - echo "Собранный проект" > build.txt
-    artifacts:
-      paths:
-        - build.txt
+    script:
+      - npx tsc --noEmit
 
-  test1:
+  run-test:
     stage: test
-    scripts:
-      - echo "Первый набор тестов"
-      - echo $TEST_1_SUCCESS
-
-  test2:
-    stage: test
-    scripts:
-      - echo "Второй набор тестов"
-      - echo $TEST_2_SUCCESS
-
-  deploy:
-    stage: deploy
-    scripts:
-      - echo $(cat build.txt)
-      - echo "Развертывание проекта"
-    needs:
-      - build
-    rules:
-      - if: $TEST_1_SUCCESS == "true" && $TEST_2_SUCCESS == "true"
-
-after_script:
-  - echo "Скрипт после основных инструкций"
+    script:
+      - npm run test:run
