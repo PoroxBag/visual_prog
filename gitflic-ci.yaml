@@ -5,17 +5,17 @@ stages:
   - build
   - test
 
-install_deps:
+install:
   stage: install
   script:
     - npm install
 
-build_app:
+build:
   stage: build
   script:
     - npx tsc --noEmit
 
-test_app:
+test:
   stage: test
   script:
     - npm run test:run
