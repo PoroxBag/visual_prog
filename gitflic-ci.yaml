@@ -5,17 +5,23 @@ stages:
   - build
   - test
 
-install:
+install_deps:
   stage: install
+  tags:
+    - docker
   script:
     - npm install
 
-build:
+build_app:
   stage: build
+  tags:
+    - docker
   script:
     - npx tsc --noEmit
 
-test:
+test_app:
   stage: test
+  tags:
+    - docker
   script:
     - npm run test:run
