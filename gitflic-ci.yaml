@@ -5,27 +5,19 @@ stages:
   - build
   - test
 
-cache:
-  paths:
-    - node_modules/
+jobs:
 
-install:
-  stage: install
-  script:
-    - npm install
-  only:
-    - branches
+  install:
+    stage: install
+    script:
+      - npm install
 
-build:
-  stage: build
-  script:
-    - npx tsc --noEmit
-  only:
-    - branches
+  build:
+    stage: build
+    script:
+      - npx tsc --noEmit
 
-test:
-  stage: test
-  script:
-    - npm run test:run
-  only:
-    - branches
+  test:
+    stage: test
+    script:
+      - npm run test:run
