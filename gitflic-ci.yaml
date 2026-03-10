@@ -1,0 +1,31 @@
+image: node:20
+
+stages:
+  - install
+  - build
+  - test
+
+cache:
+  paths:
+    - node_modules/
+
+install:
+  stage: install
+  script:
+    - npm install
+  only:
+    - branches
+
+build:
+  stage: build
+  script:
+    - npx tsc --noEmit
+  only:
+    - branches
+
+test:
+  stage: test
+  script:
+    - npm run test:run
+  only:
+    - branches
