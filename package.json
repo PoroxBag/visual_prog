@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^25.3.3",
+    "@types/node": "^25.4.0",
     "@vitest/ui": "^4.0.18",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",

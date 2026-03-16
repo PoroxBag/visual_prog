@@ -65,9 +65,31 @@ describe('pipeline basics', () => {
       having((group) => group.items.some(u => u.age > 34)),
     );
 
-    const res = pipeline(users);
-    expect(res.length).toBe(1);
-    expect(res[0].key).toBe('LA');
-    expect(res[0].items.some((u: User) => u.age > 34)).toBe(true);
+const res = pipeline(users);
+expect(res.length).toBe(1);
+const first = res[0];
+expect(first).toBeDefined();
+if (first) {
+  expect(first.key).toBe('LA');
+  expect(first.items.some((u: User) => u.age > 34)).toBe(true);
+}
   });
+
+    it('full valid pipeline', () => {
+    const where = whereBuilder<User>();
+    const sort = sortBuilder<User>();
+    const groupBy = groupByBuilder<User>();
+    const having = havingBuilder<User>();
+
+  const pipeline = query(
+    where('surname', 'Doe'),
+    where('name', 'John'),
+    groupBy('city'),
+    having(g => g.items.length > 1),
+  );
+
+  const res = pipeline(users);
+  expect(res.length).toBeGreaterThan(0);
+});
+
 });
