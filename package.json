@@ -4,10 +4,13 @@
   "type": "module",
   "description": "",
   "main": "index.js",
+  "types": "src/types.ts",
   "scripts": {
     "test": "vitest",
     "test:run": "vitest --run",
-    "test:ci": "vitest --run --reporter=dot"
+    "test:ci": "vitest --run --reporter=dot",
+    "typecheck": "tsc --noEmit",
+    "test:types": "tsd"
   },
   "keywords": [],
   "author": "",
