@@ -2,9 +2,9 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ master, lab3, lab4 ]
+    branches: [ master, lab3, lab4, lab5, lab6 ]
   pull_request:
-    branches: [ master, lab3, lab4 ]
+    branches: [ master, lab3, lab4, lab5, lab6 ]
 
 jobs:
   install-and-test:
@@ -24,6 +24,9 @@ jobs:
 
       - name: Type check (tsc)
         run: npx tsc --noEmit
+      
+      - name: Type tests (tsd)
+        run: npm run test:types
 
       - name: Run tests
         run: npm run test:run
