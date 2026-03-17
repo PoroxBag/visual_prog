@@ -2,12 +2,14 @@ import { expectType, expectError } from 'tsd';
 import type { DeepReadonly, PickedByType, EventHandlers } from '../src/types.ts';
 
 type Obj = { a: { b: number } };
+declare const deepObj: DeepReadonly<Obj>;
 
-declare const obj: DeepReadonly<Obj>;
+expectType<number>(deepObj.a.b);
 
-expectType<number>(obj.a.b);
-
-expectError(obj.a.b = 5);
+expectError(() => {
+  // @ts-expect-error
+  deepObj.a.b = 5;
+});
 
 type Mixed = {
   n: number;
@@ -16,22 +18,26 @@ type Mixed = {
 };
 
 type OnlyNumbers = PickedByType<Mixed, number>;
-
 declare const numObj: OnlyNumbers;
 
 expectType<number>(numObj.n);
 
-expectError(numObj.s);
+expectError(() => {
+  // @ts-expect-error
+  numObj.s;
+});
 
 type Events = {
-  click: { x: number };
+  click: { x: number; y: number };
   open: void;
 };
 
 type Handlers = EventHandlers<Events>;
-
 declare const handlers: Handlers;
 
-expectType<(payload: { x: number }) => void>(handlers.onClick);
+expectType<(payload: { x: number; y: number }) => void>(handlers.onClick);
 
-expectError(handlers.onClick("wrong"));
+expectError(() => {
+  // @ts-expect-error
+  handlers.onClick("wrong");
+});
