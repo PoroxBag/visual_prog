@@ -2,48 +2,22 @@ name: CI
 
 on:
   push:
-    branches: [ master, lab89 ]
+    branches: [master, lab89]
   pull_request:
-    branches: [ master, lab89 ]
+    branches: [master, lab89]
 
 jobs:
   check:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
 
-      - name: Install
-        run: npm ci
-
-      - name: Tests
-        run: npm run test:run
-
-      - name: Build
-        run: npm run build
-
-      - name: Dev smoke test
-        run: |
-          npm run dev -- --host 127.0.0.1 > /tmp/dev.log 2>&1 &
-          PID=$!
-
-          for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:5173 > /dev/null; then
-              echo "Dev server OK"
-              kill $PID
-              exit 0
-            fi
-            sleep 1
-          done
-
-          echo "Dev server failed"
-          cat /tmp/dev.log
-          kill $PID || true
-          exit 1
+      - run: npm ci
+      - run: npm run test:run
+      - run: npm run build

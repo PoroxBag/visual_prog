@@ -1,12 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { useWeather } from "../hooks/useWeather";
-
-import {
-  mockGeocode,
-  mockForecast,
-  mockPollution,
-} from "./mocks";
+import { mockGeocode, mockForecast, mockPollution } from "./mocks";
 
 describe("useWeather", () => {
   it("загружает данные", async () => {
@@ -28,9 +23,9 @@ describe("useWeather", () => {
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
+      expect(result.current.current?.city).toBe("Братск");
     });
 
-    expect(result.current.current?.city).toBe("Братск");
-    expect(result.current.daily.length).toBeGreaterThanOrEqual(1);
+    expect(result.current.daily.length).toBeGreaterThan(0);
   });
 });
