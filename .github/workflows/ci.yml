@@ -1,29 +1,49 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [ master, lab3, lab4 ]
+    branches: [ master, lab89 ]
   pull_request:
-    branches: [ master, lab3, lab4 ]
+    branches: [ master, lab89 ]
 
 jobs:
-  install-and-test:
+  check:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install
+        run: npm ci
 
-      - name: Type check (tsc)
-        run: npx tsc --noEmit
-
-      - name: Run tests
+      - name: Tests
         run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Dev smoke test
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/dev.log 2>&1 &
+          PID=$!
+
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:5173 > /dev/null; then
+              echo "Dev server OK"
+              kill $PID
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Dev server failed"
+          cat /tmp/dev.log
+          kill $PID || true
+          exit 1
