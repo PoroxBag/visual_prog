@@ -1,3 +1,5 @@
+import { ApiError } from '@/services/apiError';
+import { authService } from '@/services/authService';
 import type { DocumentSummary, SpreadsheetDocument, SpreadsheetSnapshot } from '@/types';
 import { createSpreadsheetSnapshot, spreadsheetPreview } from '@/utils/spreadsheet';
 import { setCellValue } from '@/utils/spreadsheet';
@@ -7,7 +9,6 @@ interface StoredDatabase {
 }
 
 export interface CreateDocumentRequest {
-  ownerId: string;
   title: string;
   rowCount: number;
   colCount: number;
@@ -16,15 +17,6 @@ export interface CreateDocumentRequest {
 export interface UpdateDocumentRequest {
   title?: string;
   spreadsheet?: SpreadsheetSnapshot;
-}
-
-export class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
 }
 
 const STORAGE_KEY = 'spreadsheet-documents-v2';
@@ -113,6 +105,15 @@ function readDatabase(ownerId: string): StoredDatabase {
       throw new Error('Invalid storage');
     }
 
+    const hasOwnerSeed = parsed.documents.some(
+      (document) => document.ownerId === ownerId && document.id === 'doc_demo_personal',
+    );
+
+    if (!hasOwnerSeed && ownerId === 'user-1') {
+      parsed.documents.push(createSeedDocument(ownerId));
+      writeDatabase(parsed);
+    }
+
     return parsed;
   } catch {
     const database = { documents: [createSeedDocument(ownerId), createForeignSeedDocument()] };
@@ -139,9 +140,16 @@ function findDocument(database: StoredDatabase, ownerId: string, documentId: str
   return document;
 }
 
+function resolveOwnerId(accessToken: string): string {
+  return authService.getUserFromAccessToken(accessToken).id;
+}
+
+export { ApiError };
+
 export const documentService = {
-  async listDocuments(ownerId: string): Promise<DocumentSummary[]> {
+  async listDocuments(accessToken: string): Promise<DocumentSummary[]> {
     await wait();
+    const ownerId = resolveOwnerId(accessToken);
     const database = readDatabase(ownerId);
     return database.documents
       .filter((document) => document.ownerId === ownerId)
@@ -149,13 +157,14 @@ export const documentService = {
       .map(toSummary);
   },
 
-  async createDocument(request: CreateDocumentRequest): Promise<SpreadsheetDocument> {
+  async createDocument(accessToken: string, request: CreateDocumentRequest): Promise<SpreadsheetDocument> {
     await wait();
-    const database = readDatabase(request.ownerId);
+    const ownerId = resolveOwnerId(accessToken);
+    const database = readDatabase(ownerId);
     const createdAt = now();
     const document: SpreadsheetDocument = {
       id: createId(),
-      ownerId: request.ownerId,
+      ownerId,
       title: request.title.trim() || 'Новая таблица',
       createdAt,
       updatedAt: createdAt,
@@ -167,18 +176,20 @@ export const documentService = {
     return document;
   },
 
-  async getDocument(ownerId: string, documentId: string): Promise<SpreadsheetDocument> {
+  async getDocument(accessToken: string, documentId: string): Promise<SpreadsheetDocument> {
     await wait();
+    const ownerId = resolveOwnerId(accessToken);
     const database = readDatabase(ownerId);
     return findDocument(database, ownerId, documentId);
   },
 
   async updateDocument(
-    ownerId: string,
+    accessToken: string,
     documentId: string,
     request: UpdateDocumentRequest,
   ): Promise<SpreadsheetDocument> {
     await wait();
+    const ownerId = resolveOwnerId(accessToken);
     const database = readDatabase(ownerId);
     const document = findDocument(database, ownerId, documentId);
     const updatedDocument: SpreadsheetDocument = {
@@ -193,8 +204,9 @@ export const documentService = {
     return updatedDocument;
   },
 
-  async deleteDocument(ownerId: string, documentId: string): Promise<string> {
+  async deleteDocument(accessToken: string, documentId: string): Promise<string> {
     await wait();
+    const ownerId = resolveOwnerId(accessToken);
     const database = readDatabase(ownerId);
     findDocument(database, ownerId, documentId);
     database.documents = database.documents.filter((document) => document.id !== documentId);
@@ -202,8 +214,9 @@ export const documentService = {
     return documentId;
   },
 
-  async duplicateDocument(ownerId: string, documentId: string): Promise<SpreadsheetDocument> {
+  async duplicateDocument(accessToken: string, documentId: string): Promise<SpreadsheetDocument> {
     await wait();
+    const ownerId = resolveOwnerId(accessToken);
     const database = readDatabase(ownerId);
     const source = findDocument(database, ownerId, documentId);
     const createdAt = now();

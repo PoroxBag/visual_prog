@@ -58,7 +58,7 @@ export function DashboardPage() {
         <div>
           <h2>Мои документы</h2>
           <p>
-            {user.name} · {user.email}
+            {user?.name ?? 'Пользователь'} · {user?.email ?? ''}
           </p>
         </div>
         <button type="button" className="button" onClick={() => dispatch(openCreateDocumentModal())}>

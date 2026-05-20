@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { logoutUser } from '@/features/auth/authSlice';
 import { fetchDocuments } from '@/features/documents/documentsSlice';
 
 function formatDate(value: string): string {
@@ -12,6 +14,7 @@ function formatDate(value: string): string {
 
 export function ProfilePage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
   const documentsCount = useAppSelector((state) => state.documents.items.length);
   const listStatus = useAppSelector((state) => state.documents.listStatus);
@@ -21,6 +24,15 @@ export function ProfilePage() {
       void dispatch(fetchDocuments());
     }
   }, [dispatch, listStatus]);
+
+  if (!user) {
+    return null;
+  }
+
+  const logout = async () => {
+    await dispatch(logoutUser());
+    navigate('/login', { replace: true });
+  };
 
   return (
     <main className="profile-page">
@@ -44,6 +56,9 @@ export function ProfilePage() {
             <dd>{documentsCount}</dd>
           </div>
         </dl>
+        <button type="button" className="button button--danger" onClick={() => void logout()}>
+          Выйти
+        </button>
       </section>
     </main>
   );

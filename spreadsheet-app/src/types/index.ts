@@ -78,9 +78,18 @@ export interface AuthUser {
 }
 
 export interface AuthState {
-  user: AuthUser;
+  user: AuthUser | null;
   accessToken: string | null;
   refreshToken: string | null;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface AuthSession extends AuthTokens {
+  user: AuthUser;
 }
 
 export interface ApiErrorPayload {

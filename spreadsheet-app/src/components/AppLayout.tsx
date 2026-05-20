@@ -1,5 +1,6 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useAppSelector } from '@/app/hooks';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { logoutUser } from '@/features/auth/authSlice';
 
 function routeTitle(pathname: string, activeDocumentTitle: string | null): string {
   if (pathname.startsWith('/documents/')) {
@@ -14,10 +15,17 @@ function routeTitle(pathname: string, activeDocumentTitle: string | null): strin
 }
 
 export function AppLayout() {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const location = useLocation();
   const user = useAppSelector((state) => state.auth.user);
   const activeDocument = useAppSelector((state) => state.documents.activeDocument);
   const currentTitle = routeTitle(location.pathname, activeDocument?.title ?? null);
+
+  const logout = async () => {
+    await dispatch(logoutUser());
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="layout">
@@ -54,10 +62,15 @@ export function AppLayout() {
             </div>
             <h1>{currentTitle}</h1>
           </div>
-          <div className="user-badge">
-            <strong>{user.name}</strong>
-            <span>{user.email}</span>
-          </div>
+          {user ? (
+            <div className="user-badge">
+              <strong>{user.name}</strong>
+              <span>{user.email}</span>
+              <button type="button" className="link-button" onClick={() => void logout()}>
+                Выйти
+              </button>
+            </div>
+          ) : null}
         </header>
         <Outlet />
       </div>

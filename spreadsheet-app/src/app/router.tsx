@@ -4,8 +4,10 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { RootRoute } from '@/components/RootRoute';
 import { DashboardPage } from '@/features/documents/DashboardPage';
 import { SpreadsheetPage } from '@/features/documents/SpreadsheetPage';
+import { LoginPage } from '@/pages/LoginPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { RegisterPage } from '@/pages/RegisterPage';
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +17,14 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <Navigate to="/dashboard" replace />,
+      },
+      {
+        path: 'login',
+        element: <LoginPage />,
+      },
+      {
+        path: 'register',
+        element: <RegisterPage />,
       },
       {
         element: <ProtectedRoute />,

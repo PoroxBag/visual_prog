@@ -7,8 +7,11 @@ import type {
   SpreadsheetDocument,
   SpreadsheetSnapshot,
 } from '@/types';
-import { documentService, ApiError } from '@/services/documentService';
-import type { RootState } from '@/app/store';
+import { ApiError } from '@/services/apiError';
+import { documentService } from '@/services/documentService';
+import type { AppDispatch, RootState } from '@/app/store';
+import { logout, setSession } from '@/features/auth/authSlice';
+import { authService } from '@/services/authService';
 
 interface DocumentsState {
   items: DocumentSummary[];
@@ -29,6 +32,27 @@ export interface CreateDocumentPayload {
 export interface RenameDocumentPayload {
   id: string;
   title: string;
+}
+
+async function getAccessToken(getState: () => RootState, dispatch: AppDispatch): Promise<string> {
+  const state = getState();
+
+  if (state.auth.accessToken && !authService.isAccessTokenExpired(state.auth.accessToken)) {
+    return state.auth.accessToken;
+  }
+
+  if (!state.auth.refreshToken) {
+    throw new ApiError(401, 'Пользователь не авторизован');
+  }
+
+  try {
+    const session = await authService.refresh(state.auth.refreshToken);
+    dispatch(setSession(session));
+    return session.accessToken;
+  } catch (error) {
+    dispatch(logout());
+    throw error;
+  }
 }
 
 function toErrorPayload(error: unknown): ApiErrorPayload {
@@ -56,10 +80,11 @@ const initialState: DocumentsState = {
 export const fetchDocuments = createAsyncThunk<
   DocumentSummary[],
   void,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/fetchDocuments', async (_, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/fetchDocuments', async (_, { dispatch, getState, rejectWithValue }) => {
   try {
-    return await documentService.listDocuments(getState().auth.user.id);
+    const accessToken = await getAccessToken(getState, dispatch);
+    return await documentService.listDocuments(accessToken);
   } catch (error) {
     return rejectWithValue(toErrorPayload(error));
   }
@@ -68,11 +93,11 @@ export const fetchDocuments = createAsyncThunk<
 export const createDocument = createAsyncThunk<
   SpreadsheetDocument,
   CreateDocumentPayload,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/createDocument', async (payload, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/createDocument', async (payload, { dispatch, getState, rejectWithValue }) => {
   try {
-    return await documentService.createDocument({
-      ownerId: getState().auth.user.id,
+    const accessToken = await getAccessToken(getState, dispatch);
+    return await documentService.createDocument(accessToken, {
       title: payload.title,
       rowCount: payload.rowCount,
       colCount: payload.colCount,
@@ -85,10 +110,11 @@ export const createDocument = createAsyncThunk<
 export const loadDocument = createAsyncThunk<
   SpreadsheetDocument,
   string,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/loadDocument', async (documentId, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/loadDocument', async (documentId, { dispatch, getState, rejectWithValue }) => {
   try {
-    return await documentService.getDocument(getState().auth.user.id, documentId);
+    const accessToken = await getAccessToken(getState, dispatch);
+    return await documentService.getDocument(accessToken, documentId);
   } catch (error) {
     return rejectWithValue(toErrorPayload(error));
   }
@@ -97,10 +123,11 @@ export const loadDocument = createAsyncThunk<
 export const renameDocument = createAsyncThunk<
   SpreadsheetDocument,
   RenameDocumentPayload,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/renameDocument', async (payload, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/renameDocument', async (payload, { dispatch, getState, rejectWithValue }) => {
   try {
-    return await documentService.updateDocument(getState().auth.user.id, payload.id, {
+    const accessToken = await getAccessToken(getState, dispatch);
+    return await documentService.updateDocument(accessToken, payload.id, {
       title: payload.title,
     });
   } catch (error) {
@@ -111,10 +138,11 @@ export const renameDocument = createAsyncThunk<
 export const deleteDocument = createAsyncThunk<
   string,
   string,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/deleteDocument', async (documentId, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/deleteDocument', async (documentId, { dispatch, getState, rejectWithValue }) => {
   try {
-    return await documentService.deleteDocument(getState().auth.user.id, documentId);
+    const accessToken = await getAccessToken(getState, dispatch);
+    return await documentService.deleteDocument(accessToken, documentId);
   } catch (error) {
     return rejectWithValue(toErrorPayload(error));
   }
@@ -123,10 +151,11 @@ export const deleteDocument = createAsyncThunk<
 export const duplicateDocument = createAsyncThunk<
   SpreadsheetDocument,
   string,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/duplicateDocument', async (documentId, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/duplicateDocument', async (documentId, { dispatch, getState, rejectWithValue }) => {
   try {
-    return await documentService.duplicateDocument(getState().auth.user.id, documentId);
+    const accessToken = await getAccessToken(getState, dispatch);
+    return await documentService.duplicateDocument(accessToken, documentId);
   } catch (error) {
     return rejectWithValue(toErrorPayload(error));
   }
@@ -135,8 +164,8 @@ export const duplicateDocument = createAsyncThunk<
 export const saveActiveDocument = createAsyncThunk<
   SpreadsheetDocument,
   void,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/saveActiveDocument', async (_, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/saveActiveDocument', async (_, { dispatch, getState, rejectWithValue }) => {
   try {
     const state = getState();
     const activeDocument = state.documents.activeDocument;
@@ -145,7 +174,9 @@ export const saveActiveDocument = createAsyncThunk<
       return rejectWithValue({ status: 400, message: 'Активный документ не выбран' });
     }
 
-    return await documentService.updateDocument(state.auth.user.id, activeDocument.id, {
+    const accessToken = await getAccessToken(getState, dispatch);
+
+    return await documentService.updateDocument(accessToken, activeDocument.id, {
       spreadsheet: {
         rowCount: state.spreadsheet.rowCount,
         colCount: state.spreadsheet.colCount,
@@ -162,8 +193,8 @@ export const saveActiveDocument = createAsyncThunk<
 export const replaceActiveSpreadsheet = createAsyncThunk<
   SpreadsheetDocument,
   SpreadsheetSnapshot,
-  { state: RootState; rejectValue: ApiErrorPayload }
->('documents/replaceActiveSpreadsheet', async (spreadsheet, { getState, rejectWithValue }) => {
+  { state: RootState; dispatch: AppDispatch; rejectValue: ApiErrorPayload }
+>('documents/replaceActiveSpreadsheet', async (spreadsheet, { dispatch, getState, rejectWithValue }) => {
   try {
     const state = getState();
     const activeDocument = state.documents.activeDocument;
@@ -172,7 +203,9 @@ export const replaceActiveSpreadsheet = createAsyncThunk<
       return rejectWithValue({ status: 400, message: 'Активный документ не выбран' });
     }
 
-    return await documentService.updateDocument(state.auth.user.id, activeDocument.id, { spreadsheet });
+    const accessToken = await getAccessToken(getState, dispatch);
+
+    return await documentService.updateDocument(accessToken, activeDocument.id, { spreadsheet });
   } catch (error) {
     return rejectWithValue(toErrorPayload(error));
   }
