@@ -1,14 +1,17 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { FormulaBar } from '@/components/FormulaBar';
 import { Grid } from '@/components/Grid';
 import {
   fetchDocuments,
+  loadDocument,
   replaceActiveSpreadsheet,
   saveActiveDocument,
 } from '@/features/documents/documentsSlice';
 import { loadSpreadsheet } from '@/features/spreadsheet/spreadsheetSlice';
-import { openDashboard } from '@/features/ui/uiSlice';
+import { NotFoundPage } from '@/pages/NotFoundPage';
+import type { ApiErrorPayload } from '@/types';
 import { csvToSpreadsheetSnapshot, downloadTextFile, spreadsheetToCsv, spreadsheetToJson } from '@/utils/csv';
 
 function sanitizeFilename(value: string): string {
@@ -26,19 +29,71 @@ function saveStatusLabel(status: 'saved' | 'saving' | 'error'): string {
   }
 }
 
+function isApiErrorPayload(error: unknown): error is ApiErrorPayload {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof (error as ApiErrorPayload).status === 'number'
+  );
+}
+
 export function SpreadsheetPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const { documentId } = useParams<{ documentId: string }>();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeDocument = useAppSelector((state) => state.documents.activeDocument);
+  const activeStatus = useAppSelector((state) => state.documents.activeStatus);
   const saveStatus = useAppSelector((state) => state.documents.saveStatus);
+  const error = useAppSelector((state) => state.documents.error);
   const spreadsheet = useAppSelector((state) => state.spreadsheet);
+  const [isNotFound, setIsNotFound] = useState(false);
 
-  const backToDashboard = () => {
-    if (saveStatus !== 'saved' && !window.confirm('Есть несохранённые изменения. Покинуть документ?')) {
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      saveStatus !== 'saved' && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') {
       return;
     }
 
-    dispatch(openDashboard());
+    if (window.confirm('Есть несохранённые изменения. Покинуть документ?')) {
+      blocker.proceed();
+    } else {
+      blocker.reset();
+    }
+  }, [blocker]);
+
+  useEffect(() => {
+    if (!documentId) {
+      setIsNotFound(true);
+      return;
+    }
+
+    setIsNotFound(false);
+
+    const openDocument = async () => {
+      try {
+        const document = await dispatch(loadDocument(documentId)).unwrap();
+        dispatch(loadSpreadsheet(document.spreadsheet));
+      } catch (loadError) {
+        if (isApiErrorPayload(loadError) && loadError.status === 403) {
+          navigate('/dashboard', { replace: true });
+          return;
+        }
+
+        setIsNotFound(true);
+      }
+    };
+
+    void openDocument();
+  }, [dispatch, documentId, navigate]);
+
+  const backToDashboard = () => {
+    navigate('/dashboard');
     void dispatch(fetchDocuments());
   };
 
@@ -73,15 +128,17 @@ export function SpreadsheetPage() {
     dispatch(loadSpreadsheet(document.spreadsheet));
   };
 
-  if (!activeDocument) {
+  if (isNotFound) {
     return (
-      <main className="empty-page">
-        <h1>Документ не выбран</h1>
-        <button type="button" className="button" onClick={() => dispatch(openDashboard())}>
-          К списку документов
-        </button>
-      </main>
+      <NotFoundPage
+        title="Документ не найден"
+        message="Документ не существует или был удалён. Вернитесь к списку документов."
+      />
     );
+  }
+
+  if (activeStatus === 'loading' || !activeDocument || activeDocument.id !== documentId) {
+    return <main className="empty-state">Загрузка документа...</main>;
   }
 
   return (
@@ -91,7 +148,7 @@ export function SpreadsheetPage() {
           <button type="button" className="link-button" onClick={backToDashboard}>
             Мои документы
           </button>
-          <h1>{activeDocument.title}</h1>
+          <h2>{activeDocument.title}</h2>
           <p>{saveStatusLabel(saveStatus)}</p>
         </div>
         <div className="toolbar">
@@ -131,6 +188,7 @@ export function SpreadsheetPage() {
           />
         </div>
       </header>
+      {error ? <div className="alert alert--error">{error}</div> : null}
       <FormulaBar />
       <Grid />
     </main>

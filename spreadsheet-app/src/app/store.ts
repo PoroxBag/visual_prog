@@ -27,7 +27,11 @@ export const store = configureStore({
     spreadsheet: spreadsheetReducer,
     ui: uiReducer,
   },
-  middleware: (getDefaultMiddleware) => getDefaultMiddleware().prepend(autoSaveListener.middleware),
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      immutableCheck: false,
+      serializableCheck: false,
+    }).prepend(autoSaveListener.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
+  clearActiveDocument,
   deleteDocument,
   duplicateDocument,
   fetchDocuments,
-  loadDocument,
   renameDocument,
 } from '@/features/documents/documentsSlice';
-import { loadSpreadsheet } from '@/features/spreadsheet/spreadsheetSlice';
-import { openCreateDocumentModal, openSpreadsheet } from '@/features/ui/uiSlice';
+import { openCreateDocumentModal } from '@/features/ui/uiSlice';
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('ru-RU', {
@@ -22,19 +22,19 @@ function formatDate(value: string): string {
 
 export function DashboardPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { items, listStatus, error } = useAppSelector((state) => state.documents);
   const user = useAppSelector((state) => state.auth.user);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
 
   useEffect(() => {
+    dispatch(clearActiveDocument());
     void dispatch(fetchDocuments());
   }, [dispatch]);
 
-  const openDocument = async (documentId: string) => {
-    const document = await dispatch(loadDocument(documentId)).unwrap();
-    dispatch(loadSpreadsheet(document.spreadsheet));
-    dispatch(openSpreadsheet());
+  const openDocument = (documentId: string) => {
+    navigate(`/documents/${documentId}`);
   };
 
   const startRename = (id: string, title: string) => {
@@ -56,7 +56,7 @@ export function DashboardPage() {
     <main className="dashboard">
       <header className="page-header">
         <div>
-          <h1>Мои документы</h1>
+          <h2>Мои документы</h2>
           <p>
             {user.name} · {user.email}
           </p>
@@ -99,7 +99,7 @@ export function DashboardPage() {
                 {document.rowCount}×{document.colCount}
               </span>
             </div>
-            <button type="button" className="document-preview" onClick={() => void openDocument(document.id)}>
+            <button type="button" className="document-preview" onClick={() => openDocument(document.id)}>
               {document.preview.cells.map((row, rowIndex) => (
                 <span key={rowIndex} className="document-preview__row">
                   {row.map((cell, colIndex) => (
@@ -124,7 +124,7 @@ export function DashboardPage() {
               <button
                 type="button"
                 className="button button--ghost"
-                onClick={() => void openDocument(document.id)}
+                onClick={() => openDocument(document.id)}
               >
                 Открыть
               </button>

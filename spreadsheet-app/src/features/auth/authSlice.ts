@@ -5,7 +5,7 @@ const initialState: AuthState = {
   user: {
     id: 'user-1',
     name: 'PoroxBag',
-    email: 'proxorbag@bubl.com',
+    email: 'Proxorbag@bubl.com',
     registeredAt: '2026-05-01T09:00:00.000Z',
   },
   accessToken: 'mock-access-token',

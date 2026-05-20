@@ -1,6 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import { shallowEqual } from 'react-redux';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { store, type RootState } from '@/app/store';
 import { saveActiveDocument } from '@/features/documents/documentsSlice';
 import {
   clearSelection,
@@ -33,19 +36,22 @@ interface ContextMenuState {
   targetId: CellId | null;
 }
 
-interface CellProps {
-  id: CellId;
+interface CellViewState {
   data: CellData | undefined;
-  width: number;
-  height: number;
   isSelected: boolean;
   isInRange: boolean;
   isEditing: boolean;
+}
+
+interface CellProps {
+  id: CellId;
+  width: number;
+  height: number;
   onSelect: (id: CellId, shiftKey: boolean) => void;
   onStartEditing: (id: CellId) => void;
   onStopEditing: () => void;
   onUpdate: (id: CellId, value: string) => void;
-  onContextMenu: (event: React.MouseEvent, id: CellId) => void;
+  onContextMenu: (event: ReactMouseEvent, id: CellId) => void;
 }
 
 interface CellEditorProps {
@@ -88,24 +94,34 @@ function CellEditor({ id, initialValue, onStopEditing, onUpdate }: CellEditorPro
 
 const Cell = memo(function Cell({
   id,
-  data,
   width,
   height,
-  isSelected,
-  isInRange,
-  isEditing,
   onSelect,
   onStartEditing,
   onStopEditing,
   onUpdate,
   onContextMenu,
 }: CellProps) {
-  const rawValue = data?.value ?? '';
+  const view = useAppSelector((state: RootState): CellViewState => {
+    const range = state.spreadsheet.selectionRange;
+
+    return {
+      data: state.spreadsheet.cells[id],
+      isSelected: state.spreadsheet.selectedCell === id,
+      isInRange: range ? isCellInRange(id, range.start, range.end) : false,
+      isEditing: state.spreadsheet.editingCell === id,
+    };
+  }, shallowEqual);
+  const rawValue = view.data?.value ?? '';
 
   return (
     <button
       type="button"
-      className={['grid-cell', isSelected ? 'grid-cell--selected' : '', isInRange ? 'grid-cell--range' : '']
+      className={[
+        'grid-cell',
+        view.isSelected ? 'grid-cell--selected' : '',
+        view.isInRange ? 'grid-cell--range' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
       style={{ width, height }}
@@ -115,7 +131,7 @@ const Cell = memo(function Cell({
       title={`${id}: ${rawValue}`}
       aria-label={`Ячейка ${id}`}
     >
-      {isEditing ? (
+      {view.isEditing ? (
         <CellEditor
           key={`${id}:${rawValue}`}
           id={id}
@@ -124,7 +140,7 @@ const Cell = memo(function Cell({
           onUpdate={onUpdate}
         />
       ) : (
-        <span className="grid-cell__value">{data?.computedValue ?? ''}</span>
+        <span className="grid-cell__value">{view.data?.computedValue ?? ''}</span>
       )}
     </button>
   );
@@ -136,23 +152,19 @@ function isTargetInsideRange(id: CellId, start: CellId, end: CellId): boolean {
 
 export function Grid() {
   const dispatch = useAppDispatch();
-  const spreadsheet = useAppSelector((state) => state.spreadsheet);
+  const rowCount = useAppSelector((state) => state.spreadsheet.rowCount);
+  const colCount = useAppSelector((state) => state.spreadsheet.colCount);
+  const colWidths = useAppSelector((state) => state.spreadsheet.colWidths);
+  const rowHeights = useAppSelector((state) => state.spreadsheet.rowHeights);
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<ContextMenuState>({ x: 0, y: 0, visible: false, targetId: null });
 
-  const getColWidth = useCallback(
-    (index: number) => spreadsheet.colWidths[index] ?? 100,
-    [spreadsheet.colWidths],
-  );
-
-  const getRowHeight = useCallback(
-    (index: number) => spreadsheet.rowHeights[index] ?? 28,
-    [spreadsheet.rowHeights],
-  );
+  const getColWidth = useCallback((index: number) => colWidths[index] ?? 100, [colWidths]);
+  const getRowHeight = useCallback((index: number) => rowHeights[index] ?? 28, [rowHeights]);
 
   const columns = useMemo(
     () =>
-      Array.from({ length: spreadsheet.colCount }, (_, index) => {
+      Array.from({ length: colCount }, (_, index) => {
         const colIndex = index + 1;
         return {
           index: colIndex,
@@ -160,7 +172,7 @@ export function Grid() {
           width: getColWidth(colIndex),
         };
       }),
-    [getColWidth, spreadsheet.colCount],
+    [colCount, getColWidth],
   );
 
   const gridWidth = useMemo(
@@ -169,25 +181,26 @@ export function Grid() {
   );
 
   const rowVirtualizer = useVirtualizer({
-    count: spreadsheet.rowCount,
+    count: rowCount,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => getRowHeight(index + 1),
-    overscan: 10,
+    overscan: 5,
   });
 
   const virtualRows = rowVirtualizer.getVirtualItems();
-  const selectedRange = spreadsheet.selectionRange;
 
   const selectGridCell = useCallback(
     (id: CellId, shiftKey: boolean) => {
-      if (shiftKey && spreadsheet.selectedCell) {
-        dispatch(selectRange({ start: spreadsheet.selectedCell, end: id }));
+      const current = store.getState().spreadsheet;
+
+      if (shiftKey && current.selectedCell) {
+        dispatch(selectRange({ start: current.selectedCell, end: id }));
         return;
       }
 
       dispatch(selectCell({ id }));
     },
-    [dispatch, spreadsheet.selectedCell],
+    [dispatch],
   );
 
   const closeMenu = useCallback(() => {
@@ -195,14 +208,15 @@ export function Grid() {
   }, []);
 
   const buildClipboard = useCallback((): ClipboardData | null => {
-    const bounds = getSelectionBounds(spreadsheet.selectedCell, spreadsheet.selectionRange);
+    const current = store.getState().spreadsheet;
+    const bounds = getSelectionBounds(current.selectedCell, current.selectionRange);
 
     if (!bounds) {
       return null;
     }
 
-    return createClipboardFromSelection(spreadsheet.cells, bounds);
-  }, [spreadsheet.cells, spreadsheet.selectedCell, spreadsheet.selectionRange]);
+    return createClipboardFromSelection(current.cells, bounds);
+  }, []);
 
   const copySelectedCells = useCallback(async () => {
     const clipboard = buildClipboard();
@@ -239,23 +253,42 @@ export function Grid() {
         }
       }
 
-      if (hasClipboardText || spreadsheet.clipboard) {
+      if (hasClipboardText || store.getState().spreadsheet.clipboard) {
         dispatch(pasteClipboard({ targetId: targetId ?? undefined }));
       }
     },
-    [dispatch, spreadsheet.clipboard],
+    [dispatch],
   );
 
   const clearCurrentSelection = useCallback(() => {
     dispatch(clearSelection());
   }, [dispatch]);
 
+  const startEditingCell = useCallback(
+    (id: CellId) => {
+      dispatch(startEditing({ id }));
+    },
+    [dispatch],
+  );
+
+  const stopEditingCell = useCallback(() => {
+    dispatch(stopEditing());
+  }, [dispatch]);
+
+  const updateGridCell = useCallback(
+    (id: CellId, value: string) => {
+      dispatch(updateCell({ id, value }));
+    },
+    [dispatch],
+  );
+
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      const current = store.getState().spreadsheet;
       const activeTagName = document.activeElement?.tagName;
       const isEditingInput = activeTagName === 'INPUT' || activeTagName === 'TEXTAREA';
 
-      if (isEditingInput && spreadsheet.editingCell !== null) {
+      if (isEditingInput && current.editingCell !== null) {
         return;
       }
 
@@ -291,17 +324,17 @@ export function Grid() {
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
         event.preventDefault();
-        void pasteToCell(spreadsheet.selectedCell);
+        void pasteToCell(current.selectedCell);
         return;
       }
 
-      if (event.key === 'Enter' && spreadsheet.selectedCell) {
+      if (event.key === 'Enter' && current.selectedCell) {
         event.preventDefault();
-        dispatch(startEditing({ id: spreadsheet.selectedCell }));
+        dispatch(startEditing({ id: current.selectedCell }));
         return;
       }
 
-      if ((event.key === 'Delete' || event.key === 'Backspace') && spreadsheet.selectedCell) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && current.selectedCell) {
         event.preventDefault();
         clearCurrentSelection();
         return;
@@ -333,17 +366,10 @@ export function Grid() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [
-    clearCurrentSelection,
-    copySelectedCells,
-    dispatch,
-    pasteToCell,
-    spreadsheet.editingCell,
-    spreadsheet.selectedCell,
-  ]);
+  }, [clearCurrentSelection, copySelectedCells, dispatch, pasteToCell]);
 
   const handleColumnResize = useCallback(
-    (index: number, event: React.MouseEvent) => {
+    (index: number, event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -366,7 +392,7 @@ export function Grid() {
   );
 
   const handleRowResize = useCallback(
-    (index: number, event: React.MouseEvent) => {
+    (index: number, event: ReactMouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -390,19 +416,20 @@ export function Grid() {
   );
 
   const handleContextMenu = useCallback(
-    (event: React.MouseEvent, id: CellId) => {
+    (event: ReactMouseEvent, id: CellId) => {
       event.preventDefault();
+      const current = store.getState().spreadsheet;
 
       if (
-        !spreadsheet.selectionRange ||
-        !isTargetInsideRange(id, spreadsheet.selectionRange.start, spreadsheet.selectionRange.end)
+        !current.selectionRange ||
+        !isTargetInsideRange(id, current.selectionRange.start, current.selectionRange.end)
       ) {
         dispatch(selectCell({ id }));
       }
 
       setMenu({ x: event.clientX, y: event.clientY, visible: true, targetId: id });
     },
-    [dispatch, spreadsheet.selectionRange],
+    [dispatch],
   );
 
   useEffect(() => {
@@ -450,7 +477,7 @@ export function Grid() {
                   style={{
                     width: gridWidth,
                     height: rowHeight,
-                    transform: `translateY(${virtualRow.start + 32}px)`,
+                    transform: `translate3d(0, ${virtualRow.start + 32}px, 0)`,
                   }}
                 >
                   <div
@@ -467,25 +494,17 @@ export function Grid() {
                   </div>
                   {columns.map((column) => {
                     const id = toCellId(rowIndex, column.index);
-                    const isSelected = spreadsheet.selectedCell === id;
-                    const isInRange = selectedRange
-                      ? isCellInRange(id, selectedRange.start, selectedRange.end)
-                      : false;
 
                     return (
                       <Cell
                         key={id}
                         id={id}
-                        data={spreadsheet.cells[id]}
                         width={column.width}
                         height={rowHeight}
-                        isSelected={isSelected}
-                        isInRange={isInRange}
-                        isEditing={spreadsheet.editingCell === id}
                         onSelect={selectGridCell}
-                        onStartEditing={(cellId) => dispatch(startEditing({ id: cellId }))}
-                        onStopEditing={() => dispatch(stopEditing())}
-                        onUpdate={(cellId, value) => dispatch(updateCell({ id: cellId, value }))}
+                        onStartEditing={startEditingCell}
+                        onStopEditing={stopEditingCell}
+                        onUpdate={updateGridCell}
                         onContextMenu={handleContextMenu}
                       />
                     );
@@ -569,7 +588,7 @@ export function Grid() {
               closeMenu();
             }}
           >
-            Очистить выделение
+            Очистить
           </button>
         </div>
       ) : null}

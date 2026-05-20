@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/app/hooks';
 import { createDocument } from '@/features/documents/documentsSlice';
 import { loadSpreadsheet } from '@/features/spreadsheet/spreadsheetSlice';
-import { closeCreateDocumentModal, openSpreadsheet } from '@/features/ui/uiSlice';
+import { closeCreateDocumentModal } from '@/features/ui/uiSlice';
 
 export function CreateDocumentModal() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const [title, setTitle] = useState('Новая таблица');
   const [rowCount, setRowCount] = useState(100);
   const [colCount, setColCount] = useState(26);
@@ -20,7 +22,7 @@ export function CreateDocumentModal() {
       ).unwrap();
       dispatch(loadSpreadsheet(document.spreadsheet));
       dispatch(closeCreateDocumentModal());
-      dispatch(openSpreadsheet());
+      navigate(`/documents/${document.id}`);
     } finally {
       setIsSubmitting(false);
     }
