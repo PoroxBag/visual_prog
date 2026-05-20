@@ -1,10 +1,6 @@
-cd ~/labs/typescript_folder/lab1
-
-mkdir -p .github/workflows
-cat > .github/workflows/ci.yml <<'YAML'
 name: CI
 
-on:
+'on':
   push:
     branches:
       - itworks
@@ -18,6 +14,7 @@ on:
 
 jobs:
   checks:
+    name: Checks
     runs-on: ubuntu-latest
 
     defaults:
@@ -52,4 +49,3 @@ jobs:
 
       - name: Format check
         run: npm run format:check
-YAML
