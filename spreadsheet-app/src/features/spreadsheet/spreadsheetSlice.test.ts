@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCellStyle,
+  cutSelection,
   pasteClipboard,
   selectCell,
   selectRange,
   setClipboardFromSelection,
   spreadsheetReducer,
+  toggleCellStyle,
   undo,
   updateCell,
 } from '@/features/spreadsheet/spreadsheetSlice';
@@ -27,6 +30,33 @@ describe('spreadsheetSlice', () => {
     expect(state.cells.A7?.value).toBe('2');
     expect(state.cells.B6?.value).toBe('3');
     expect(state.cells.B7?.value).toBe('4');
+  });
+
+  it('copies cell styles with selected range', () => {
+    let state = reduce(undefined, updateCell({ id: 'A1', value: '100' }));
+    state = reduce(state, selectCell({ id: 'A1' }));
+    state = reduce(state, toggleCellStyle({ key: 'bold' }));
+    state = reduce(state, applyCellStyle({ textColor: '#dc2626', numberFormat: 'currency' }));
+    state = reduce(state, setClipboardFromSelection());
+    state = reduce(state, selectCell({ id: 'C3' }));
+    state = reduce(state, pasteClipboard({ targetId: 'C3' }));
+
+    expect(state.cells.C3?.value).toBe('100');
+    expect(state.cells.C3?.style?.bold).toBe(true);
+    expect(state.cells.C3?.style?.textColor).toBe('#dc2626');
+    expect(state.cells.C3?.style?.numberFormat).toBe('currency');
+  });
+
+  it('cuts selected range with values and styles', () => {
+    let state = reduce(undefined, updateCell({ id: 'A1', value: '100' }));
+    state = reduce(state, selectCell({ id: 'A1' }));
+    state = reduce(state, applyCellStyle({ textColor: '#dc2626', numberFormat: 'currency' }));
+    state = reduce(state, cutSelection());
+
+    expect(state.cells.A1).toBeUndefined();
+    expect(state.clipboard?.cells[0]?.[0]?.value).toBe('100');
+    expect(state.clipboard?.cells[0]?.[0]?.style?.textColor).toBe('#dc2626');
+    expect(state.clipboard?.cells[0]?.[0]?.style?.numberFormat).toBe('currency');
   });
 
   it('undo restores the previous spreadsheet snapshot', () => {

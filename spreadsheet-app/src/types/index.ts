@@ -6,6 +6,10 @@ export type AsyncStatus = 'idle' | 'loading' | 'succeeded' | 'failed';
 
 export type SaveStatus = 'saved' | 'saving' | 'error';
 
+export type HorizontalAlign = 'left' | 'center' | 'right';
+
+export type NumberFormat = 'plain' | 'percent' | 'currency' | 'date';
+
 export interface CellPosition {
   row: number;
   col: number;
@@ -16,17 +20,33 @@ export interface CellRange {
   end: CellId;
 }
 
+export interface CellStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  textColor?: string;
+  backgroundColor?: string;
+  horizontalAlign?: HorizontalAlign;
+  numberFormat?: NumberFormat;
+}
+
 export interface CellData {
   id: CellId;
   value: string;
   computedValue: string;
   type: CellValueType;
+  style?: CellStyle;
+}
+
+export interface ClipboardCell {
+  value: string;
+  style?: CellStyle;
 }
 
 export interface ClipboardData {
   rows: number;
   cols: number;
-  values: string[][];
+  cells: ClipboardCell[][];
 }
 
 export interface SpreadsheetSnapshot {

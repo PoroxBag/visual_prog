@@ -1,8 +1,17 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { CellId, CellRange, ClipboardData, SpreadsheetSnapshot, SpreadsheetState } from '@/types';
+import type {
+  CellId,
+  CellRange,
+  CellStyle,
+  ClipboardData,
+  SpreadsheetSnapshot,
+  SpreadsheetState,
+} from '@/types';
 import { DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, parseCellId, toCellId } from '@/utils/formulas';
 import {
+  applyCellStyleToCells,
   clearCellValue,
+  clearCellsInBounds,
   cloneSpreadsheetSnapshot,
   createClipboardFromSelection,
   createSpreadsheetSnapshot,
@@ -14,6 +23,7 @@ import {
   pasteClipboardToCells,
   setCellValue,
   textToClipboard,
+  toggleCellStyleInCells,
 } from '@/utils/spreadsheet';
 
 const HISTORY_LIMIT = 100;
@@ -86,6 +96,13 @@ export const spreadsheetSlice = createSlice({
       state.selectedCell = action.payload.end;
       state.selectionRange = action.payload;
     },
+    selectAll(state) {
+      state.selectedCell = 'A1';
+      state.selectionRange = {
+        start: 'A1',
+        end: toCellId(state.rowCount, state.colCount),
+      };
+    },
     startEditing(state, action: PayloadAction<{ id: CellId }>) {
       state.editingCell = action.payload.id;
     },
@@ -110,12 +127,18 @@ export const spreadsheetSlice = createSlice({
       }
 
       pushHistory(state);
+      state.cells = clearCellsInBounds(state.cells, bounds, true);
+    },
+    cutSelection(state) {
+      const bounds = getSelectionBounds(state.selectedCell, state.selectionRange);
 
-      for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
-        for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
-          state.cells = clearCellValue(state.cells, toCellId(row, col));
-        }
+      if (!bounds) {
+        return;
       }
+
+      pushHistory(state);
+      state.clipboard = createClipboardFromSelection(state.cells, bounds);
+      state.cells = clearCellsInBounds(state.cells, bounds, false);
     },
     setClipboard(state, action: PayloadAction<ClipboardData | null>) {
       state.clipboard = action.payload;
@@ -148,6 +171,26 @@ export const spreadsheetSlice = createSlice({
           parseCellId(targetId).col + state.clipboard.cols - 1,
         ),
       };
+    },
+    applyCellStyle(state, action: PayloadAction<CellStyle>) {
+      const bounds = getSelectionBounds(state.selectedCell, state.selectionRange);
+
+      if (!bounds) {
+        return;
+      }
+
+      pushHistory(state);
+      state.cells = applyCellStyleToCells(state.cells, bounds, action.payload);
+    },
+    toggleCellStyle(state, action: PayloadAction<{ key: 'bold' | 'italic' | 'underline' }>) {
+      const bounds = getSelectionBounds(state.selectedCell, state.selectionRange);
+
+      if (!bounds) {
+        return;
+      }
+
+      pushHistory(state);
+      state.cells = toggleCellStyleInCells(state.cells, bounds, action.payload.key);
     },
     resizeCol(state, action: PayloadAction<{ index: number; width: number }>) {
       state.colWidths[action.payload.index] = Math.max(48, action.payload.width);
@@ -225,8 +268,10 @@ export const spreadsheetSlice = createSlice({
 });
 
 export const {
+  applyCellStyle,
   clearCell,
   clearSelection,
+  cutSelection,
   deleteCol,
   deleteRow,
   insertCol,
@@ -237,6 +282,7 @@ export const {
   redo,
   resizeCol,
   resizeRow,
+  selectAll,
   selectCell,
   selectRange,
   setClipboard,
@@ -244,6 +290,7 @@ export const {
   setClipboardFromText,
   startEditing,
   stopEditing,
+  toggleCellStyle,
   undo,
   updateCell,
 } = spreadsheetSlice.actions;

@@ -229,7 +229,10 @@ export const documentService = {
       spreadsheet: {
         ...source.spreadsheet,
         cells: Object.fromEntries(
-          Object.entries(source.spreadsheet.cells).map(([id, cell]) => [id, { ...cell }]),
+          Object.entries(source.spreadsheet.cells).map(([id, cell]) => [
+            id,
+            { ...cell, style: cell.style ? { ...cell.style } : undefined },
+          ]),
         ),
         colWidths: { ...source.spreadsheet.colWidths },
         rowHeights: { ...source.spreadsheet.rowHeights },

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { authReducer, loginUser, logout, refreshAccessToken, registerUser } from '@/features/auth/authSlice';
+import {
+  authReducer,
+  loginUser,
+  logout,
+  refreshAccessToken,
+  registerUser,
+  updateProfile,
+} from '@/features/auth/authSlice';
 import type { AuthSession } from '@/types';
 
 const session: AuthSession = {
@@ -33,6 +40,15 @@ describe('authSlice', () => {
     );
 
     expect(state.refreshToken).toBe('refresh-token');
+  });
+
+  it('updates profile data in state', () => {
+    const state = authReducer(
+      { user: session.user, accessToken: session.accessToken, refreshToken: session.refreshToken },
+      updateProfile.fulfilled({ ...session.user, name: 'Updated User' }, '', { name: 'Updated User' }),
+    );
+
+    expect(state.user?.name).toBe('Updated User');
   });
 
   it('clears session after logout or rejected refresh', () => {

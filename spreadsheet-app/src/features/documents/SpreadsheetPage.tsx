@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { FormattingToolbar } from '@/components/FormattingToolbar';
 import { FormulaBar } from '@/components/FormulaBar';
 import { Grid } from '@/components/Grid';
 import {
@@ -190,6 +191,7 @@ export function SpreadsheetPage() {
       </header>
       {error ? <div className="alert alert--error">{error}</div> : null}
       <FormulaBar />
+      <FormattingToolbar />
       <Grid />
     </main>
   );

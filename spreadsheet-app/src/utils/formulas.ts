@@ -1,4 +1,4 @@
-import type { CellData, CellId, CellPosition, CellValueType } from '@/types';
+import type { CellData, CellId, CellPosition, CellStyle, CellValueType } from '@/types';
 
 const CELL_REFERENCE_PATTERN = /\b([A-Z]+)(\d+)\b/g;
 const FUNCTION_PATTERN = /(SUM|AVERAGE|MAX|MIN|COUNT)\(([^()]+)\)/gi;
@@ -385,7 +385,12 @@ export function evaluateFormula(
   }
 }
 
-export function createCell(id: CellId, value: string, cells: Record<CellId, CellData>): CellData {
+export function createCell(
+  id: CellId,
+  value: string,
+  cells: Record<CellId, CellData>,
+  style?: CellStyle,
+): CellData {
   const type = detectCellType(value);
 
   return {
@@ -393,6 +398,7 @@ export function createCell(id: CellId, value: string, cells: Record<CellId, Cell
     value,
     type,
     computedValue: type === 'formula' ? evaluateFormula(value, cells, new Set([id])) : value,
+    ...(style ? { style } : {}),
   };
 }
 

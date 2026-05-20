@@ -32,6 +32,15 @@ export interface RegisterRequest {
   password: string;
 }
 
+export interface UpdateProfileRequest {
+  name: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 const AUTH_STORAGE_KEY = 'spreadsheet-auth-v1';
 const REFRESH_TOKEN_KEY = 'spreadsheet-refresh-token-v1';
 const ACCESS_TOKEN_LIFETIME_MS = 90_000;
@@ -206,6 +215,46 @@ export const authService = {
     }
 
     window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
+
+  async updateProfile(accessToken: string, request: UpdateProfileRequest): Promise<AuthUser> {
+    await wait();
+    const currentUser = this.getUserFromAccessToken(accessToken);
+    const database = readDatabase();
+    const userIndex = database.users.findIndex((user) => user.id === currentUser.id);
+
+    if (userIndex < 0) {
+      throw new ApiError(401, 'Пользователь не найден');
+    }
+
+    database.users[userIndex] = {
+      ...database.users[userIndex],
+      name: request.name.trim(),
+    };
+    writeDatabase(database);
+
+    return toUser(database.users[userIndex]);
+  },
+
+  async changePassword(accessToken: string, request: ChangePasswordRequest): Promise<void> {
+    await wait();
+    const currentUser = this.getUserFromAccessToken(accessToken);
+    const database = readDatabase();
+    const userIndex = database.users.findIndex((user) => user.id === currentUser.id);
+
+    if (userIndex < 0) {
+      throw new ApiError(401, 'Пользователь не найден');
+    }
+
+    if (database.users[userIndex].password !== request.currentPassword) {
+      throw new ApiError(400, 'Текущий пароль указан неверно');
+    }
+
+    database.users[userIndex] = {
+      ...database.users[userIndex],
+      password: request.newPassword,
+    };
+    writeDatabase(database);
   },
 
   getStoredRefreshToken(): string | null {

@@ -1,5 +1,5 @@
 import type { SpreadsheetSnapshot } from '@/types';
-import { createSnapshotFromCsvValues } from '@/utils/spreadsheet';
+import { createSnapshotFromCsvValues, formatCellDisplayValue } from '@/utils/spreadsheet';
 import { toCellId } from '@/utils/formulas';
 
 export function parseCsv(text: string): string[][] {
@@ -68,7 +68,7 @@ export function spreadsheetToCsv(snapshot: SpreadsheetSnapshot): string {
     const values: string[] = [];
 
     for (let col = 1; col <= snapshot.colCount; col += 1) {
-      values.push(escapeCsvCell(snapshot.cells[toCellId(row, col)]?.computedValue ?? ''));
+      values.push(escapeCsvCell(formatCellDisplayValue(snapshot.cells[toCellId(row, col)])));
     }
 
     lines.push(values.join(','));

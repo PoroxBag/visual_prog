@@ -2,6 +2,7 @@ import { configureStore, createListenerMiddleware, isAnyOf } from '@reduxjs/tool
 import { authReducer } from '@/features/auth/authSlice';
 import { documentsReducer, saveActiveDocument, setSaveStatus } from '@/features/documents/documentsSlice';
 import {
+  applyCellStyle,
   clearCell,
   clearSelection,
   deleteCol,
@@ -12,6 +13,7 @@ import {
   redo,
   resizeCol,
   resizeRow,
+  toggleCellStyle,
   undo,
   updateCell,
 } from '@/features/spreadsheet/spreadsheetSlice';
@@ -40,6 +42,8 @@ export type AppDispatch = typeof store.dispatch;
 autoSaveListener.startListening({
   matcher: isAnyOf(
     updateCell,
+    applyCellStyle,
+    toggleCellStyle,
     clearCell,
     clearSelection,
     pasteClipboard,

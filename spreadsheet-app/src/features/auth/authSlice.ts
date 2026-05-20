@@ -1,8 +1,14 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { RootState } from '@/app/store';
 import { ApiError } from '@/services/apiError';
-import { authService, type LoginRequest, type RegisterRequest } from '@/services/authService';
-import type { ApiErrorPayload, AuthSession, AuthState } from '@/types';
+import {
+  authService,
+  type ChangePasswordRequest,
+  type LoginRequest,
+  type RegisterRequest,
+  type UpdateProfileRequest,
+} from '@/services/authService';
+import type { ApiErrorPayload, AuthSession, AuthState, AuthUser } from '@/types';
 
 const initialState: AuthState = {
   user: null,
@@ -26,6 +32,14 @@ function applySession(state: AuthState, session: AuthSession): void {
   state.user = session.user;
   state.accessToken = session.accessToken;
   state.refreshToken = session.refreshToken;
+}
+
+function getRequiredAccessToken(state: RootState): string {
+  if (!state.auth.accessToken) {
+    throw new ApiError(401, 'Пользователь не авторизован');
+  }
+
+  return state.auth.accessToken;
 }
 
 export const loginUser = createAsyncThunk<AuthSession, LoginRequest, { rejectValue: ApiErrorPayload }>(
@@ -68,6 +82,30 @@ export const refreshAccessToken = createAsyncThunk<
   }
 });
 
+export const updateProfile = createAsyncThunk<
+  AuthUser,
+  UpdateProfileRequest,
+  { state: RootState; rejectValue: ApiErrorPayload }
+>('auth/updateProfile', async (payload, { getState, rejectWithValue }) => {
+  try {
+    return await authService.updateProfile(getRequiredAccessToken(getState()), payload);
+  } catch (error) {
+    return rejectWithValue(toErrorPayload(error));
+  }
+});
+
+export const changePassword = createAsyncThunk<
+  void,
+  ChangePasswordRequest,
+  { state: RootState; rejectValue: ApiErrorPayload }
+>('auth/changePassword', async (payload, { getState, rejectWithValue }) => {
+  try {
+    await authService.changePassword(getRequiredAccessToken(getState()), payload);
+  } catch (error) {
+    return rejectWithValue(toErrorPayload(error));
+  }
+});
+
 export const logoutUser = createAsyncThunk<void, void, { state: RootState }>(
   'auth/logoutUser',
   async (_, { getState }) => {
@@ -105,6 +143,9 @@ export const authSlice = createSlice({
         state.accessToken = null;
         state.refreshToken = null;
         authService.clearStoredRefreshToken();
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.user = action.payload;
       })
       .addCase(logoutUser.fulfilled, (state) => {
         state.user = null;

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { shallowEqual } from 'react-redux';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
@@ -7,6 +7,7 @@ import { store, type RootState } from '@/app/store';
 import { saveActiveDocument } from '@/features/documents/documentsSlice';
 import {
   clearSelection,
+  cutSelection,
   deleteCol,
   deleteRow,
   insertCol,
@@ -16,18 +17,26 @@ import {
   redo,
   resizeCol,
   resizeRow,
+  selectAll,
   selectCell,
   selectRange,
   setClipboard,
   setClipboardFromText,
   startEditing,
   stopEditing,
+  toggleCellStyle,
   undo,
   updateCell,
 } from '@/features/spreadsheet/spreadsheetSlice';
 import type { CellData, CellId, ClipboardData } from '@/types';
 import { ROW_HEADER_WIDTH, columnIndexToName, isCellInRange, parseCellId, toCellId } from '@/utils/formulas';
-import { clipboardToText, createClipboardFromSelection, getSelectionBounds } from '@/utils/spreadsheet';
+import {
+  clipboardToText,
+  createClipboardFromSelection,
+  formatCellDisplayValue,
+  getSelectionBounds,
+  normalizeCellStyle,
+} from '@/utils/spreadsheet';
 
 interface ContextMenuState {
   x: number;
@@ -35,6 +44,8 @@ interface ContextMenuState {
   visible: boolean;
   targetId: CellId | null;
 }
+
+type ResizeKind = 'col' | 'row';
 
 interface CellViewState {
   data: CellData | undefined;
@@ -113,6 +124,23 @@ const Cell = memo(function Cell({
     };
   }, shallowEqual);
   const rawValue = view.data?.value ?? '';
+  const cellStyle = normalizeCellStyle(view.data?.style);
+  const buttonStyle: CSSProperties = {
+    width,
+    height,
+    backgroundColor: cellStyle.backgroundColor,
+    color: cellStyle.textColor,
+    fontWeight: cellStyle.bold ? 800 : 400,
+    fontStyle: cellStyle.italic ? 'italic' : 'normal',
+    textDecoration: cellStyle.underline ? 'underline' : 'none',
+    textAlign: cellStyle.horizontalAlign,
+    justifyContent:
+      cellStyle.horizontalAlign === 'center'
+        ? 'center'
+        : cellStyle.horizontalAlign === 'right'
+          ? 'flex-end'
+          : 'flex-start',
+  };
 
   return (
     <button
@@ -124,7 +152,7 @@ const Cell = memo(function Cell({
       ]
         .filter(Boolean)
         .join(' ')}
-      style={{ width, height }}
+      style={buttonStyle}
       onClick={(event) => onSelect(id, event.shiftKey)}
       onDoubleClick={() => onStartEditing(id)}
       onContextMenu={(event) => onContextMenu(event, id)}
@@ -140,7 +168,7 @@ const Cell = memo(function Cell({
           onUpdate={onUpdate}
         />
       ) : (
-        <span className="grid-cell__value">{view.data?.computedValue ?? ''}</span>
+        <span className="grid-cell__value">{formatCellDisplayValue(view.data)}</span>
       )}
     </button>
   );
@@ -158,6 +186,7 @@ export function Grid() {
   const rowHeights = useAppSelector((state) => state.spreadsheet.rowHeights);
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<ContextMenuState>({ x: 0, y: 0, visible: false, targetId: null });
+  const resizeGuideRef = useRef<HTMLDivElement | null>(null);
 
   const getColWidth = useCallback((index: number) => colWidths[index] ?? 100, [colWidths]);
   const getRowHeight = useCallback((index: number) => rowHeights[index] ?? 28, [rowHeights]);
@@ -236,25 +265,48 @@ export function Grid() {
     }
   }, [buildClipboard, dispatch]);
 
+  const cutSelectedCells = useCallback(async () => {
+    const clipboard = buildClipboard();
+
+    if (!clipboard) {
+      return;
+    }
+
+    if ('clipboard' in navigator) {
+      try {
+        await navigator.clipboard.writeText(clipboardToText(clipboard));
+      } catch {
+        dispatch(setClipboard(clipboard));
+      }
+    }
+
+    dispatch(cutSelection());
+  }, [buildClipboard, dispatch]);
+
   const pasteToCell = useCallback(
     async (targetId?: CellId | null) => {
-      let hasClipboardText = false;
+      const internalClipboard = store.getState().spreadsheet.clipboard;
 
-      if ('clipboard' in navigator) {
-        try {
-          const text = await navigator.clipboard.readText();
-
-          if (text.length > 0) {
-            dispatch(setClipboardFromText(text));
-            hasClipboardText = true;
-          }
-        } catch {
-          hasClipboardText = false;
-        }
+      if (internalClipboard) {
+        dispatch(pasteClipboard({ targetId: targetId ?? undefined }));
+        return;
       }
 
-      if (hasClipboardText || store.getState().spreadsheet.clipboard) {
+      if (!('clipboard' in navigator)) {
+        return;
+      }
+
+      try {
+        const text = await navigator.clipboard.readText();
+
+        if (text.length === 0) {
+          return;
+        }
+
+        dispatch(setClipboardFromText(text));
         dispatch(pasteClipboard({ targetId: targetId ?? undefined }));
+      } catch {
+        return;
       }
     },
     [dispatch],
@@ -286,7 +338,8 @@ export function Grid() {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
       const current = store.getState().spreadsheet;
       const activeTagName = document.activeElement?.tagName;
-      const isEditingInput = activeTagName === 'INPUT' || activeTagName === 'TEXTAREA';
+      const isEditingInput =
+        activeTagName === 'INPUT' || activeTagName === 'TEXTAREA' || activeTagName === 'SELECT';
 
       if (isEditingInput && current.editingCell !== null) {
         return;
@@ -295,6 +348,30 @@ export function Grid() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
         void dispatch(saveActiveDocument());
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        dispatch(toggleCellStyle({ key: 'bold' }));
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        dispatch(toggleCellStyle({ key: 'italic' }));
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'u') {
+        event.preventDefault();
+        dispatch(toggleCellStyle({ key: 'underline' }));
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        dispatch(selectAll());
         return;
       }
 
@@ -322,6 +399,12 @@ export function Grid() {
         return;
       }
 
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        void cutSelectedCells();
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
         event.preventDefault();
         void pasteToCell(current.selectedCell);
@@ -331,6 +414,12 @@ export function Grid() {
       if (event.key === 'Enter' && current.selectedCell) {
         event.preventDefault();
         dispatch(startEditing({ id: current.selectedCell }));
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dispatch(stopEditing());
         return;
       }
 
@@ -366,7 +455,39 @@ export function Grid() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [clearCurrentSelection, copySelectedCells, dispatch, pasteToCell]);
+  }, [clearCurrentSelection, copySelectedCells, cutSelectedCells, dispatch, pasteToCell]);
+
+  const updateResizeGuide = useCallback((kind: ResizeKind, clientX: number, clientY: number) => {
+    const guide = resizeGuideRef.current;
+    const viewport = parentRef.current;
+
+    if (!guide || !viewport) {
+      return;
+    }
+
+    const rect = viewport.getBoundingClientRect();
+    guide.dataset.kind = kind;
+    guide.style.display = 'block';
+
+    if (kind === 'col') {
+      const x = Math.min(Math.max(clientX, rect.left), rect.right);
+      guide.style.width = '2px';
+      guide.style.height = `${rect.height}px`;
+      guide.style.transform = `translate3d(${x}px, ${rect.top}px, 0)`;
+      return;
+    }
+
+    const y = Math.min(Math.max(clientY, rect.top), rect.bottom);
+    guide.style.width = `${rect.width}px`;
+    guide.style.height = '2px';
+    guide.style.transform = `translate3d(${rect.left}px, ${y}px, 0)`;
+  }, []);
+
+  const hideResizeGuide = useCallback(() => {
+    if (resizeGuideRef.current) {
+      resizeGuideRef.current.style.display = 'none';
+    }
+  }, []);
 
   const handleColumnResize = useCallback(
     (index: number, event: ReactMouseEvent) => {
@@ -375,12 +496,17 @@ export function Grid() {
 
       const startX = event.clientX;
       const startWidth = getColWidth(index);
+      let nextWidth = startWidth;
+      updateResizeGuide('col', event.clientX, event.clientY);
 
       const handleMove = (moveEvent: MouseEvent) => {
-        dispatch(resizeCol({ index, width: startWidth + moveEvent.clientX - startX }));
+        nextWidth = Math.max(48, startWidth + moveEvent.clientX - startX);
+        updateResizeGuide('col', moveEvent.clientX, moveEvent.clientY);
       };
 
       const handleUp = () => {
+        hideResizeGuide();
+        dispatch(resizeCol({ index, width: nextWidth }));
         window.removeEventListener('mousemove', handleMove);
         window.removeEventListener('mouseup', handleUp);
       };
@@ -388,7 +514,7 @@ export function Grid() {
       window.addEventListener('mousemove', handleMove);
       window.addEventListener('mouseup', handleUp);
     },
-    [dispatch, getColWidth],
+    [dispatch, getColWidth, hideResizeGuide, updateResizeGuide],
   );
 
   const handleRowResize = useCallback(
@@ -398,13 +524,18 @@ export function Grid() {
 
       const startY = event.clientY;
       const startHeight = getRowHeight(index);
+      let nextHeight = startHeight;
+      updateResizeGuide('row', event.clientX, event.clientY);
 
       const handleMove = (moveEvent: MouseEvent) => {
-        dispatch(resizeRow({ index, height: startHeight + moveEvent.clientY - startY }));
-        rowVirtualizer.measure();
+        nextHeight = Math.max(22, startHeight + moveEvent.clientY - startY);
+        updateResizeGuide('row', moveEvent.clientX, moveEvent.clientY);
       };
 
       const handleUp = () => {
+        hideResizeGuide();
+        dispatch(resizeRow({ index, height: nextHeight }));
+        requestAnimationFrame(() => rowVirtualizer.measure());
         window.removeEventListener('mousemove', handleMove);
         window.removeEventListener('mouseup', handleUp);
       };
@@ -412,7 +543,7 @@ export function Grid() {
       window.addEventListener('mousemove', handleMove);
       window.addEventListener('mouseup', handleUp);
     },
-    [dispatch, getRowHeight, rowVirtualizer],
+    [dispatch, getRowHeight, hideResizeGuide, rowVirtualizer, updateResizeGuide],
   );
 
   const handleContextMenu = useCallback(
@@ -443,8 +574,8 @@ export function Grid() {
   return (
     <section className="spreadsheet" aria-label="Таблица">
       <div className="spreadsheet__hint">
-        Enter — редактировать, Ctrl+S — сохранить, Ctrl+Z — отменить, Ctrl+Y — повторить, Shift+клик —
-        диапазон, Ctrl+C/Ctrl+V — копировать и вставить диапазон.
+        Enter — редактировать, Ctrl+S — сохранить, Ctrl+Z — отменить, Ctrl+Y — повторить, Ctrl+B/I/U — формат,
+        Shift+клик — диапазон, Ctrl+C/X/V — копировать, вырезать и вставить.
       </div>
       <div ref={parentRef} className="spreadsheet__viewport">
         <div
@@ -477,7 +608,7 @@ export function Grid() {
                   style={{
                     width: gridWidth,
                     height: rowHeight,
-                    transform: `translate3d(0, ${virtualRow.start + 32}px, 0)`,
+                    transform: `translate3d(0, ${virtualRow.start}px, 0)`,
                   }}
                 >
                   <div
@@ -515,6 +646,7 @@ export function Grid() {
           </div>
         </div>
       </div>
+      <div ref={resizeGuideRef} className="spreadsheet__resize-guide" />
       {menuTargetId ? (
         <div
           className="context-menu"
@@ -523,6 +655,9 @@ export function Grid() {
         >
           <button type="button" onClick={() => void copySelectedCells().then(closeMenu)}>
             Копировать
+          </button>
+          <button type="button" onClick={() => void cutSelectedCells().then(closeMenu)}>
+            Вырезать
           </button>
           <button type="button" onClick={() => void pasteToCell(menuTargetId).then(closeMenu)}>
             Вставить

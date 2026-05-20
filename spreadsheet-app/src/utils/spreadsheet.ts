@@ -1,4 +1,13 @@
-import type { CellData, CellId, CellRange, ClipboardData, SpreadsheetSnapshot } from '@/types';
+import type {
+  CellData,
+  CellId,
+  CellRange,
+  CellStyle,
+  ClipboardData,
+  HorizontalAlign,
+  NumberFormat,
+  SpreadsheetSnapshot,
+} from '@/types';
 import {
   DEFAULT_COL_COUNT,
   DEFAULT_ROW_COUNT,
@@ -19,6 +28,27 @@ export interface SelectionBounds {
   endCol: number;
 }
 
+export const defaultCellStyle: Required<CellStyle> = {
+  bold: false,
+  italic: false,
+  underline: false,
+  textColor: '#111827',
+  backgroundColor: '#ffffff',
+  horizontalAlign: 'left',
+  numberFormat: 'plain',
+};
+
+export function normalizeCellStyle(style?: CellStyle): Required<CellStyle> {
+  return {
+    ...defaultCellStyle,
+    ...style,
+  };
+}
+
+function cloneStyle(style?: CellStyle): CellStyle | undefined {
+  return style ? { ...style } : undefined;
+}
+
 export function createSpreadsheetSnapshot(
   rowCount = DEFAULT_ROW_COUNT,
   colCount = DEFAULT_COL_COUNT,
@@ -36,7 +66,15 @@ export function cloneSpreadsheetSnapshot(snapshot: SpreadsheetSnapshot): Spreads
   return {
     rowCount: snapshot.rowCount,
     colCount: snapshot.colCount,
-    cells: Object.fromEntries(Object.entries(snapshot.cells).map(([id, cell]) => [id, { ...cell }])),
+    cells: Object.fromEntries(
+      Object.entries(snapshot.cells).map(([id, cell]) => [
+        id,
+        {
+          ...cell,
+          style: cloneStyle(cell.style),
+        },
+      ]),
+    ),
     colWidths: { ...snapshot.colWidths },
     rowHeights: { ...snapshot.rowHeights },
   };
@@ -88,27 +126,31 @@ export function createClipboardFromSelection(
   cells: Record<CellId, CellData>,
   bounds: SelectionBounds,
 ): ClipboardData {
-  const values: string[][] = [];
+  const clipboardCells: ClipboardData['cells'] = [];
 
   for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
-    const currentRow: string[] = [];
+    const currentRow: ClipboardData['cells'][number] = [];
 
     for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
-      currentRow.push(cells[toCellId(row, col)]?.value ?? '');
+      const cell = cells[toCellId(row, col)];
+      currentRow.push({
+        value: cell?.value ?? '',
+        style: cloneStyle(cell?.style),
+      });
     }
 
-    values.push(currentRow);
+    clipboardCells.push(currentRow);
   }
 
   return {
-    rows: values.length,
-    cols: values[0]?.length ?? 0,
-    values,
+    rows: clipboardCells.length,
+    cols: clipboardCells[0]?.length ?? 0,
+    cells: clipboardCells,
   };
 }
 
 export function clipboardToText(clipboard: ClipboardData): string {
-  return clipboard.values.map((row) => row.join('\t')).join('\n');
+  return clipboard.cells.map((row) => row.map((cell) => cell.value).join('\t')).join('\n');
 }
 
 export function textToClipboard(text: string): ClipboardData {
@@ -116,15 +158,15 @@ export function textToClipboard(text: string): ClipboardData {
   const rows = normalized.endsWith('\n') ? normalized.slice(0, -1).split('\n') : normalized.split('\n');
   const values = rows.map((row) => row.split('\t'));
   const colCount = Math.max(...values.map((row) => row.length), 0);
-  const normalizedValues = values.map((row) => [
-    ...row,
-    ...Array.from({ length: colCount - row.length }, () => ''),
+  const clipboardCells = values.map((row) => [
+    ...row.map((value) => ({ value })),
+    ...Array.from({ length: colCount - row.length }, () => ({ value: '' })),
   ]);
 
   return {
-    rows: normalizedValues.length,
+    rows: clipboardCells.length,
     cols: colCount,
-    values: normalizedValues,
+    cells: clipboardCells,
   };
 }
 
@@ -136,16 +178,22 @@ export function pasteClipboardToCells(
   const target = parseCellId(targetId);
   const nextCells = { ...cells };
 
-  clipboard.values.forEach((rowValues, rowOffset) => {
-    rowValues.forEach((value, colOffset) => {
+  clipboard.cells.forEach((rowCells, rowOffset) => {
+    rowCells.forEach((clipboardCell, colOffset) => {
       const id = toCellId(target.row + rowOffset, target.col + colOffset);
 
-      if (value.length === 0) {
+      if (clipboardCell.value.length === 0 && !clipboardCell.style) {
         delete nextCells[id];
         return;
       }
 
-      nextCells[id] = createCell(id, value, nextCells);
+      const existingStyle = nextCells[id]?.style;
+      nextCells[id] = createCell(
+        id,
+        clipboardCell.value,
+        nextCells,
+        cloneStyle(clipboardCell.style ?? existingStyle),
+      );
     });
   });
 
@@ -158,20 +206,165 @@ export function setCellValue(
   value: string,
 ): Record<CellId, CellData> {
   const nextCells = { ...cells };
+  const existingStyle = nextCells[id]?.style;
 
   if (value.trim().length === 0) {
+    if (existingStyle) {
+      nextCells[id] = createCell(id, '', nextCells, cloneStyle(existingStyle));
+      return recalculateCells(nextCells);
+    }
+
     delete nextCells[id];
     return recalculateCells(nextCells);
   }
 
-  nextCells[id] = createCell(id, value, nextCells);
+  nextCells[id] = createCell(id, value, nextCells, cloneStyle(existingStyle));
   return recalculateCells(nextCells);
 }
 
 export function clearCellValue(cells: Record<CellId, CellData>, id: CellId): Record<CellId, CellData> {
   const nextCells = { ...cells };
-  delete nextCells[id];
+  const existingStyle = nextCells[id]?.style;
+
+  if (existingStyle) {
+    nextCells[id] = createCell(id, '', nextCells, cloneStyle(existingStyle));
+  } else {
+    delete nextCells[id];
+  }
+
   return recalculateCells(nextCells);
+}
+
+export function clearCellsInBounds(
+  cells: Record<CellId, CellData>,
+  bounds: SelectionBounds,
+  preserveStyle: boolean,
+): Record<CellId, CellData> {
+  const nextCells = { ...cells };
+
+  for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+    for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
+      const id = toCellId(row, col);
+      const existingStyle = nextCells[id]?.style;
+
+      if (preserveStyle && existingStyle) {
+        nextCells[id] = createCell(id, '', nextCells, cloneStyle(existingStyle));
+      } else {
+        delete nextCells[id];
+      }
+    }
+  }
+
+  return recalculateCells(nextCells);
+}
+
+export function applyCellStyleToCells(
+  cells: Record<CellId, CellData>,
+  bounds: SelectionBounds,
+  style: CellStyle,
+): Record<CellId, CellData> {
+  const nextCells = { ...cells };
+
+  for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+    for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
+      const id = toCellId(row, col);
+      const cell = nextCells[id] ?? createCell(id, '', nextCells);
+      nextCells[id] = {
+        ...cell,
+        style: {
+          ...cell.style,
+          ...style,
+        },
+      };
+    }
+  }
+
+  return recalculateCells(nextCells);
+}
+
+export function toggleCellStyleInCells(
+  cells: Record<CellId, CellData>,
+  bounds: SelectionBounds,
+  key: 'bold' | 'italic' | 'underline',
+): Record<CellId, CellData> {
+  const nextCells = { ...cells };
+  const firstCell = nextCells[toCellId(bounds.startRow, bounds.startCol)];
+  const firstStyle = normalizeCellStyle(firstCell?.style);
+  const nextValue = !firstStyle[key];
+
+  for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+    for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
+      const id = toCellId(row, col);
+      const cell = nextCells[id] ?? createCell(id, '', nextCells);
+      nextCells[id] = {
+        ...cell,
+        style: {
+          ...cell.style,
+          [key]: nextValue,
+        },
+      };
+    }
+  }
+
+  return recalculateCells(nextCells);
+}
+
+export function formatCellDisplayValue(cell?: CellData): string {
+  if (!cell) {
+    return '';
+  }
+
+  const style = normalizeCellStyle(cell.style);
+  const value = cell.computedValue;
+
+  if (value.length === 0 || value.startsWith('#')) {
+    return value;
+  }
+
+  if (style.numberFormat === 'plain') {
+    return value;
+  }
+
+  if (style.numberFormat === 'date') {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat('ru-RU').format(date);
+  }
+
+  const numericValue = Number(value.replace(',', '.'));
+
+  if (!Number.isFinite(numericValue)) {
+    return value;
+  }
+
+  if (style.numberFormat === 'percent') {
+    return new Intl.NumberFormat('ru-RU', {
+      style: 'percent',
+      maximumFractionDigits: 2,
+    }).format(numericValue);
+  }
+
+  if (style.numberFormat === 'currency') {
+    return new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      maximumFractionDigits: 2,
+    }).format(numericValue);
+  }
+
+  return value;
+}
+
+export function isHorizontalAlign(value: string): value is HorizontalAlign {
+  return value === 'left' || value === 'center' || value === 'right';
+}
+
+export function isNumberFormat(value: string): value is NumberFormat {
+  return value === 'plain' || value === 'percent' || value === 'currency' || value === 'date';
 }
 
 export function insertRowInSnapshot(snapshot: SpreadsheetSnapshot, index: number): SpreadsheetSnapshot {
@@ -251,7 +444,7 @@ export function spreadsheetPreview(snapshot: SpreadsheetSnapshot): string[][] {
     const currentRow: string[] = [];
 
     for (let col = 1; col <= 3; col += 1) {
-      currentRow.push(snapshot.cells[toCellId(row, col)]?.computedValue ?? '');
+      currentRow.push(formatCellDisplayValue(snapshot.cells[toCellId(row, col)]));
     }
 
     rows.push(currentRow);
