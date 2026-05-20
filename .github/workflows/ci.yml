@@ -1,29 +1,55 @@
-name: CI Pipeline
+cd ~/labs/typescript_folder/lab1
+
+mkdir -p .github/workflows
+cat > .github/workflows/ci.yml <<'YAML'
+name: CI
 
 on:
   push:
-    branches: [ master, lab3, lab4 ]
+    branches:
+      - itworks
+      - main
+      - master
   pull_request:
-    branches: [ master, lab3, lab4 ]
+    branches:
+      - itworks
+      - main
+      - master
 
 jobs:
-  install-and-test:
+  checks:
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: spreadsheet-app
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 22
+          cache: npm
+          cache-dependency-path: spreadsheet-app/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Type check (tsc)
-        run: npx tsc --noEmit
+      - name: Typecheck
+        run: npm run typecheck
 
-      - name: Run tests
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
         run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Format check
+        run: npm run format:check
+YAML
